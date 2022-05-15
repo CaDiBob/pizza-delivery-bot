@@ -6,6 +6,58 @@ from pprint import pprint
 
 from transliterate import translit
 
+from fields import fields
+
+
+def create_field_to_flow(access_token, field, flow_id):
+    url = 'https://api.moltin.com/v2/fields'
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+    }
+    json_data = {
+        'data': {
+            'type': 'field',
+            'name': field,
+            'slug': field,
+            'field_type': 'string',
+            'validation_rules': [],
+            'description': field,
+            'required': True,
+            'default': 0,
+            'enabled': True,
+            'relationships': {
+                'flow': {
+                    'data': {
+                        'type': 'flow',
+                        'id': flow_id,
+                    },
+                },
+            },
+        },
+    }
+    response = requests.post(url, headers=headers, json=json_data)
+    response.raise_for_status()
+    answer = response.json()
+    return answer
+
+def create_flow(access_token):
+    url = 'https://api.moltin.com/v2/flows'
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+    }
+    json_data = {
+        'data': {
+            'type': 'flow',
+            'name': 'Pizzeria',
+            'slug': 'Pizzeria',
+            'description': 'Адреса и координаты пицерий',
+            'enabled': True,
+        },
+    }
+    response = requests.post(url, headers=headers, json=json_data)
+    response.raise_for_status()
+    answer = response.json()
+    return answer
 
 def create_currency(access_token):
     url = 'https://api.moltin.com/v2/currencies'
@@ -124,6 +176,10 @@ def main():
         client_id,
         client_secret,
     )
+    flow_id = create_flow(access_token)['data']['id']
+    for field in fields:
+        print(create_field_to_flow(access_token, field, flow_id))
+    exit()
     create_currency(access_token)
     products = get_all_pizzas()
 
