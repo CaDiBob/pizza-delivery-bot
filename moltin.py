@@ -1,15 +1,54 @@
-import json
+#!/usr/bin/env python
+import os
+from urllib import response
 import requests
 from environs import Env
-from pprint import pprint
-
-
 from transliterate import translit
+from properties import fields_for_flow, flow_properties
 
-from fields import fields
+
+def get_all_entries(access_token, flow_slug):
+    url = f'https://api.moltin.com/v2/flows/{flow_slug}/entries'
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+    }
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    answer = response.json()
+    return answer
 
 
-def create_field_to_flow(access_token, field, flow_id):
+def get_all_fields_by_flow(access_token, flow_slug):
+    url = f'https://api.moltin.com/v2/flows/{flow_slug}/fields'
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+    }
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    answer = response.json()
+    return answer
+
+
+def create_entry(access_token, values, flow_slug):
+    url = f'https://api.moltin.com/v2/flows/{flow_slug}/entries'
+    headers = {
+        'Authorization': f'{access_token}',
+    }
+    json_data = {
+        'data': {
+            'type': 'entry',
+        },
+    }
+    json_data['data'].update(
+        values
+    )
+    response = requests.post(url, headers=headers, json=json_data)
+    response.raise_for_status()
+    answer = response.json()
+    return answer
+
+
+def create_field_to_flow(access_token, fields_for_flow, flow_id):
     url = 'https://api.moltin.com/v2/fields'
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -17,47 +56,73 @@ def create_field_to_flow(access_token, field, flow_id):
     json_data = {
         'data': {
             'type': 'field',
-            'name': field,
-            'slug': field,
-            'field_type': 'string',
-            'validation_rules': [],
-            'description': field,
-            'required': True,
-            'default': 0,
-            'enabled': True,
-            'relationships': {
-                'flow': {
-                    'data': {
-                        'type': 'flow',
-                        'id': flow_id,
-                    },
-                },
-            },
         },
     }
-    response = requests.post(url, headers=headers, json=json_data)
-    response.raise_for_status()
-    answer = response.json()
+    for field in fields_for_flow:
+        json_data['data'].update(
+            {
+                'name': field['name'],
+                'slug': field['slug'],
+                'field_type': field['field_type'],
+                'description': field['description'],
+                'required': True,
+                'enabled': True,
+                'omit_null': False,
+                'relationships':
+                {
+                    'flow':
+                    {
+                        'data':
+                        {
+                            'type': 'flow',
+                            'id': flow_id,
+                        },
+                    },
+                },
+            }
+        )
+        response = requests.post(url, headers=headers, json=json_data)
+        response.raise_for_status()
+        answer = response.json()
     return answer
 
-def create_flow(access_token):
+
+def save_flow_info_to_json(answer):
+    flow_name = answer['data']['slug']
+    flow_id = answer['data']['id']
+    os.makedirs('flows_info', exist_ok=True)
+    folder = 'flows_info'
+    with open(os.path.join(folder, f'flow_{flow_name}.txt'), 'w')as file:
+        file.write(flow_id)
+
+
+def get_flow_id():
+    folder = 'flows_info'
+    with open(os.path.join(folder, f'flow_pizzeria.txt'))as file:
+        flow_id = file.read()
+    return flow_id
+
+
+def add_flow(access_token, flow_properties):
     url = 'https://api.moltin.com/v2/flows'
     headers = {
-        'Authorization': f'Bearer {access_token}',
+        'Authorization': f'{access_token}',
     }
     json_data = {
         'data': {
             'type': 'flow',
-            'name': 'Pizzeria',
-            'slug': 'Pizzeria',
-            'description': 'Адреса и координаты пицерий',
+            'name': flow_properties['name'],
+            'slug': flow_properties['slug'],
+            'description': flow_properties['description'],
             'enabled': True,
         },
     }
     response = requests.post(url, headers=headers, json=json_data)
     response.raise_for_status()
     answer = response.json()
+    save_flow_info_to_json(answer)
     return answer
+
 
 def create_currency(access_token):
     url = 'https://api.moltin.com/v2/currencies'
@@ -167,31 +232,27 @@ def get_all_pizzas():
     return answer
 
 
-def main():
-    env = Env()
-    env.read_env()
-    client_id = env('MOLTIN_CLIENT_ID')
-    client_secret = env('MOLTIN_CLIENT_SECRET')
-    access_token = get_moltin_access_token(
-        client_id,
-        client_secret,
-    )
-    flow_id = create_flow(access_token)['data']['id']
-    for field in fields:
-        print(create_field_to_flow(access_token, field, flow_id))
-    exit()
-    create_currency(access_token)
-    products = get_all_pizzas()
+def get_addresses():
+    url = 'https://dvmn.org/media/filer_public/90/90/9090ecbf-249f-42c7-8635-a96985268b88/addresses.json'
+    response = requests.get(url)
+    response.raise_for_status()
+    answer = response.json()
+    return answer
 
-    for product in products:
+
+def add_addresses(access_token):
+    addresses = get_addresses()
+    fields = get_all_fields_by_flow(access_token, flow_slug='pizzeria')
+    fields_slugs = [field['slug'] for field in fields['data']]
+    for address in addresses:
         try:
-            product_id = create_product(access_token, product)['data']['id']
-            file_id = upload_image(access_token, product)['data']['id']
-            print(create_main_image(access_token, product_id, file_id))
-        except Exception:
-            print(f'Не загрузилась: {product.get("name")}')
-            continue
-
-
-if __name__ == '__main__':
-    main()
+            values = {
+                'address': address['address']['full'],
+                'alias': address['alias'],
+                'lon': float(address['coordinates']['lon']),
+                'lat': float(address['coordinates']['lat']),
+            }
+            create_entry(access_token, values, flow_slug='pizzeria')
+        except requests.exceptions.HTTPError as err:
+            print(err)
+    return 'Upload complided'
