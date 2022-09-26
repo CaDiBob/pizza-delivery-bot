@@ -9,10 +9,12 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ConversationHandler,
+    MessageHandler,
+    Filters,
     Updater,
 )
 from environs import Env
-
+from geocoder import fetch_coordinates
 from moltin import (
     connect_db,
     create_cart,
@@ -21,13 +23,14 @@ from moltin import (
     get_products,
     get_product_detail,
     get_product_info,
-    put_product_to_cart,
     get_cart_info_products,
     get_cart_sum,
+    put_product_to_cart,
+    remove_cart_item
 )
 
 
-HANDLE_MENU, HANDLE_DESCRIPTION, HANDLE_CART = range(3)
+HANDLE_MENU, HANDLE_DESCRIPTION, HANDLE_CART, HANDLE_WAITING = range(4)
 
 
 logging.basicConfig(
@@ -98,11 +101,13 @@ def handle_description(update, context):
     client_id = context.bot_data['client_id']
     client_secret = context.bot_data['client_secret']
     context.user_data['product_id'] = product_id
-    product_detail = get_product_detail(context, client_id, client_secret, product_id)
+    product_detail = get_product_detail(
+        context, client_id, client_secret, product_id)
     product_info = get_product_info(product_detail)
     url_img = get_img(context, client_id, client_secret, product_detail)
     keyboard = [
-        [InlineKeyboardButton('Положить в корзину', callback_data='Положить в корзину')],
+        [InlineKeyboardButton('Положить в корзину',
+                              callback_data='Положить в корзину')],
         [InlineKeyboardButton('Назад', callback_data='Назад')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -120,7 +125,8 @@ def add_product_to_cart(update, context):
     client_secret = context.bot_data['client_secret']
     cart_id = context.user_data['cart_id']
     product_id = context.user_data['product_id']
-    put_product_to_cart(context, client_id, client_secret, cart_id, product_id, quantity=1)
+    put_product_to_cart(context, client_id, client_secret,
+                        cart_id, product_id, quantity=1)
     return HANDLE_DESCRIPTION
 
 
@@ -130,7 +136,8 @@ def cart_info(update, context):
     client_id = context.bot_data['client_id']
     client_secret = context.bot_data['client_secret']
     cart_id = context.user_data['cart_id']
-    cart_products = get_cart_products(context, client_id, client_secret, cart_id)
+    cart_products = get_cart_products(
+        context, client_id, client_secret, cart_id)
     cart_info = get_cart_info_products(cart_products)
     cart_sum = get_cart_sum(context, client_id, client_secret, cart_id)
     keyboard = list()
@@ -154,6 +161,14 @@ def cart_info(update, context):
             )
         ]
     )
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                'Оплатить',
+                callback_data='Оплатить',
+            )
+        ]
+    )
     reply_markup = InlineKeyboardMarkup(keyboard)
     bot.send_message(
         text=f'{cart_info}\n{cart_sum}',
@@ -161,6 +176,63 @@ def cart_info(update, context):
         reply_markup=reply_markup,
     )
     return HANDLE_CART
+
+
+def remove_item(update, context):
+    bot = context.bot
+    user_id = update.effective_user.id
+    client_id = context.bot_data['client_id']
+    client_secret = context.bot_data['client_secret']
+    cart_id = context.user_data['cart_id']
+    product_id = update.callback_query.data
+    title = context.user_data['title']
+    keyboard = [
+        [InlineKeyboardButton('Корзина', callback_data='Корзина')]
+    ]
+    remove_cart_item(context, client_id, client_secret, cart_id, product_id)
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    bot.send_message(
+        text=f'Товар {title} удален из корзины',
+        chat_id=user_id,
+        reply_markup=reply_markup,
+    )
+    return HANDLE_CART
+
+
+def handle_waiting(update, context):
+    bot = context.bot
+    user_id = update.effective_user.id
+    keyboard = [
+        [InlineKeyboardButton('Корзина', callback_data='Корзина')],
+        [InlineKeyboardButton('В меню', callback_data='В меню')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    bot.send_message(
+        text='''
+        Хорошо, Пришлите нам ваш адрес текстом или геолокацию.
+        ''',
+        chat_id=user_id,
+        reply_markup=reply_markup,
+    )
+    return HANDLE_WAITING
+
+
+def check_coordinates(update, context):
+    message = update.message
+    current_position = (message.location.longitude, message.location.latitude)
+    coords = f'{current_position[0]},{current_position[1]}'
+    address_str = fetch_coordinates(coords)
+    update.message.reply_text(address_str)
+    return HANDLE_WAITING
+
+
+def check_address(update, context):
+    coords = update.message.text
+    address_str = fetch_coordinates(coords)
+    if not address_str:
+        update.message.reply_text('Введите корректный адрес')
+    update.message.reply_text(address_str)
+    return HANDLE_WAITING
 
 
 def cancel(update, context):
@@ -206,7 +278,15 @@ def main():
                 CallbackQueryHandler(handle_description, pattern=r'[0-9]'),
             ],
             HANDLE_CART: [
+                CallbackQueryHandler(cart_info, pattern=r'Корзина'),
+                CallbackQueryHandler(handle_waiting, pattern=r'Оплатить'),
                 CallbackQueryHandler(handle_menu, pattern=r'В меню'),
+                CallbackQueryHandler(remove_item),
+            ],
+            HANDLE_WAITING: [
+                MessageHandler(Filters.location, check_coordinates),
+                MessageHandler(Filters.text & ~Filters.command, check_address),
+                CallbackQueryHandler(handle_waiting, pattern=r'Ввести снова'),
             ]
         },
         fallbacks=[CommandHandler('cancel', cancel)],

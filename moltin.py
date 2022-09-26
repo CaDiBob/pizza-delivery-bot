@@ -481,11 +481,30 @@ def update_token(context, client_id, client_secret):
 def get_token_on_db(client_id, client_secret, token_info, user_id):
     timestamp = time.time()
     lifetime = token_info.get('expires_in')
-    birth_time = token_info.get('expires')
-    token_lifetime = sum([birth_time, lifetime])
+    birthtime = token_info.get('expires')
+    token_lifetime = sum([birthtime, lifetime]) - 120 #Сокращаем время жизни токена на 120 секунд.
     live_token = token_info.get('access_token')
 
-    if token_lifetime > timestamp:
+    if int(token_lifetime) > int(timestamp):
         return live_token
 
     return get_moltin_access_token_info(client_id, client_secret, user_id)
+
+
+def main():
+    env = Env()
+    env.read_env()
+    client_id = env.str('MOLTIN_CLIENT_ID')
+    client_secret = env.str('MOLTIN_CLIENT_SECRET')
+    user_id = env.str('TG_CHAT_ID')
+
+    exit()
+    pprint(create_field_to_flow(access_token,
+           fields_for_flow, flow_id=get_flow_id()))
+    exit()
+    pprint(create_entry(access_token, flow_slug='pizzeria'))
+    exit()
+
+
+if __name__ == '__main__':
+    main()
