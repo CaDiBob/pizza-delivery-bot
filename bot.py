@@ -1,5 +1,5 @@
 import logging
-import redis
+from pprint import pprint
 import telegram
 from telegram import (
     InlineKeyboardButton,
@@ -14,12 +14,17 @@ from telegram.ext import (
     Updater,
 )
 from environs import Env
-from geocoder import fetch_coordinates
+from geocoder import (
+    fetch_coordinates,
+    get_distance,
+    get_text_distance,
+)
 from moltin import (
     connect_db,
     create_cart,
     get_cart_products,
     get_img,
+    get_moltin_access_token_info,
     get_products,
     get_product_detail,
     get_product_info,
@@ -56,13 +61,12 @@ def handle_menu(update, context):
     logger.info('handle_menu')
     user_id = update.effective_user.id
     context.user_data['user_id'] = user_id
-    db = context.bot_data['db']
-    client_id = context.bot_data['client_id']
-    client_secret = context.bot_data['client_secret']
-    products = get_products(context, client_id, client_secret)
+    db = connect_db()
+    access_token = context.bot_data['access_token']
+    products = get_products(access_token)
     context.user_data['products'] = products
     if not db.get(f'for_car_{user_id}'):
-        cart_id = create_cart(context, client_id, client_secret, user_id)
+        cart_id = create_cart(access_token, user_id)
         db.set(f'for_car_{user_id}', cart_id)
     cart_id = db.get(f'for_car_{user_id}')
     context.user_data['cart_id'] = cart_id
@@ -98,13 +102,11 @@ def handle_description(update, context):
     bot = context.bot
     user_id = update.effective_user.id
     product_id = update.callback_query.data
-    client_id = context.bot_data['client_id']
-    client_secret = context.bot_data['client_secret']
+    access_token = context.bot_data['access_token']
     context.user_data['product_id'] = product_id
-    product_detail = get_product_detail(
-        context, client_id, client_secret, product_id)
+    product_detail = get_product_detail(access_token, product_id)
     product_info = get_product_info(product_detail)
-    url_img = get_img(context, client_id, client_secret, product_detail)
+    url_img = get_img(access_token, product_detail)
     keyboard = [
         [InlineKeyboardButton('Положить в корзину',
                               callback_data='Положить в корзину')],
@@ -121,25 +123,21 @@ def handle_description(update, context):
 
 
 def add_product_to_cart(update, context):
-    client_id = context.bot_data['client_id']
-    client_secret = context.bot_data['client_secret']
+    access_token = context.bot_data['access_token']
     cart_id = context.user_data['cart_id']
     product_id = context.user_data['product_id']
-    put_product_to_cart(context, client_id, client_secret,
-                        cart_id, product_id, quantity=1)
+    put_product_to_cart(access_token, cart_id, product_id, quantity=1)
     return HANDLE_DESCRIPTION
 
 
 def cart_info(update, context):
     bot = context.bot
     user_id = update.effective_user.id
-    client_id = context.bot_data['client_id']
-    client_secret = context.bot_data['client_secret']
+    access_token = context.bot_data['access_token']
     cart_id = context.user_data['cart_id']
-    cart_products = get_cart_products(
-        context, client_id, client_secret, cart_id)
+    cart_products = get_cart_products(access_token, cart_id)
     cart_info = get_cart_info_products(cart_products)
-    cart_sum = get_cart_sum(context, client_id, client_secret, cart_id)
+    cart_sum = get_cart_sum(access_token, cart_id)
     keyboard = list()
     for product in cart_products:
         title = product['name']
@@ -181,15 +179,14 @@ def cart_info(update, context):
 def remove_item(update, context):
     bot = context.bot
     user_id = update.effective_user.id
-    client_id = context.bot_data['client_id']
-    client_secret = context.bot_data['client_secret']
+    access_token = context.bot_data['access_token']
     cart_id = context.user_data['cart_id']
     product_id = update.callback_query.data
     title = context.user_data['title']
     keyboard = [
         [InlineKeyboardButton('Корзина', callback_data='Корзина')]
     ]
-    remove_cart_item(context, client_id, client_secret, cart_id, product_id)
+    remove_cart_item(access_token, cart_id, product_id)
     reply_markup = InlineKeyboardMarkup(keyboard)
     bot.send_message(
         text=f'Товар {title} удален из корзины',
@@ -218,20 +215,26 @@ def handle_waiting(update, context):
 
 
 def check_coordinates(update, context):
+    access_token = context.bot_data['access_token']
     message = update.message
     current_position = (message.location.longitude, message.location.latitude)
     coords = f'{current_position[0]},{current_position[1]}'
-    address_str = fetch_coordinates(coords)
-    update.message.reply_text(address_str)
+    addressee = fetch_coordinates(coords)
+    min_distance_to_order = get_distance(access_token, addressee)
+    text = get_text_distance(min_distance_to_order)
+    update.message.reply_text(text)
     return HANDLE_WAITING
 
 
 def check_address(update, context):
+    access_token = context.bot_data['access_token']
     coords = update.message.text
-    address_str = fetch_coordinates(coords)
-    if not address_str:
+    addressee = fetch_coordinates(coords)
+    if not addressee:
         update.message.reply_text('Введите корректный адрес')
-    update.message.reply_text(address_str)
+    min_distance_to_order = get_distance(access_token, addressee)
+    text = get_text_distance(min_distance_to_order)
+    update.message.reply_text(text)
     return HANDLE_WAITING
 
 
@@ -249,18 +252,18 @@ def error(update, context):
 def main():
     env = Env()
     env.read_env()
-    db = connect_db()
     tg_token = env('TG_TOKEN')
     tg_chat_id = env('TG_CHAT_ID')
     client_id = env('MOLTIN_CLIENT_ID')
     client_secret = env('MOLTIN_CLIENT_SECRET')
+    access_token = get_moltin_access_token_info(client_id, client_secret)
     updater = Updater(tg_token)
     bot = telegram.Bot(tg_token)
     logger.addHandler(TelegramLogsHandler(tg_chat_id, bot))
     dispatcher = updater.dispatcher
     dispatcher.bot_data['client_id'] = client_id
     dispatcher.bot_data['client_secret'] = client_secret
-    dispatcher.bot_data['db'] = db
+    dispatcher.bot_data['access_token'] = access_token
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', handle_menu)],

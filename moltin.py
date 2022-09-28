@@ -1,11 +1,8 @@
 #!/usr/bin/env python
-import json
 import os
 import redis
 import requests
-import time
 from environs import Env
-from pprint import pprint
 import textwrap as tw
 
 from transliterate import translit
@@ -13,9 +10,8 @@ from transliterate import translit
 from properties import fields_for_flow, flow_properties
 
 
-def get_cart_sum(context, client_id, client_secret, cart_id):
+def get_cart_sum(access_token, cart_id):
     url = f'https://api.moltin.com/v2/carts/{cart_id}'
-    access_token = update_token(context, client_id, client_secret,)
     headers = {
         'Authorization': f'Bearer {access_token}',
     }
@@ -71,10 +67,7 @@ def create_customer(access_token, email):
     return answer
 
 
-def put_product_to_cart(
-        context, client_id, client_secret,
-        cart_id, product_id, quantity):
-    access_token = update_token(context, client_id, client_secret)
+def put_product_to_cart(access_token, cart_id, product_id, quantity):
     url = f'https://api.moltin.com/v2/carts/{cart_id}/items'
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -92,8 +85,7 @@ def put_product_to_cart(
     return answer
 
 
-def create_cart(context, client_id, client_secret, user_id):
-    access_token = update_token(context, client_id, client_secret)
+def create_cart(access_token, user_id):
     url = 'https://api.moltin.com/v2/carts'
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -109,9 +101,8 @@ def create_cart(context, client_id, client_secret, user_id):
     return answer
 
 
-def remove_cart_item(context, client_id, client_secret, cart_id, product_id):
+def remove_cart_item(access_token, cart_id, product_id):
     url = f'https://api.moltin.com/v2/carts/{cart_id}/items/{product_id}'
-    access_token = update_token(context, client_id, client_secret,)
     headers = {
         'Authorization': f'Bearer {access_token}',
     }
@@ -121,9 +112,8 @@ def remove_cart_item(context, client_id, client_secret, cart_id, product_id):
     return answer
 
 
-def get_cart_products(context, client_id, client_secret, cart_id):
+def get_cart_products(access_token, cart_id):
     url = f'https://api.moltin.com/v2/carts/{cart_id}/items'
-    access_token = update_token(context, client_id, client_secret,)
     headers = {
         'Authorization': f'Bearer {access_token}',
     }
@@ -174,7 +164,8 @@ def create_entry(access_token, values, flow_slug):
     return answer
 
 
-def create_field_to_flow(access_token, fields_for_flow, flow_id):
+def create_field_to_flow(access_token, flow_id):
+    fields_for_flow = fields_for_flow
     url = 'https://api.moltin.com/v2/fields'
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -213,7 +204,7 @@ def create_field_to_flow(access_token, fields_for_flow, flow_id):
     return answer
 
 
-def save_flow_info_to_json(answer):
+def save_flow_info_to_txt(answer):
     flow_name = answer['data']['slug']
     flow_id = answer['data']['id']
     os.makedirs('flows_info', exist_ok=True)
@@ -246,7 +237,7 @@ def add_flow(access_token, flow_properties):
     response = requests.post(url, headers=headers, json=json_data)
     response.raise_for_status()
     answer = response.json()
-    save_flow_info_to_json(answer)
+    save_flow_info_to_txt(answer)
     return answer
 
 
@@ -274,8 +265,7 @@ def create_currency(access_token):
     return answer
 
 
-def get_moltin_access_token_info(client_id, client_secret, user_id):
-    db = connect_db()
+def get_moltin_access_token_info(client_id, client_secret):
     url = 'https://api.moltin.com/oauth/access_token'
     data = {
         'client_id': client_id,
@@ -284,14 +274,8 @@ def get_moltin_access_token_info(client_id, client_secret, user_id):
     }
     response = requests.post(url, data=data)
     response.raise_for_status()
-    answer = response.json()
-    token_info = {
-        'access_token': answer.get('access_token'),
-        'expires': answer.get('expires'),
-        'expires_in': answer.get('expires_in'),
-    }
-    token_info = db.set(user_id, json.dumps(token_info))
-    return token_info
+    answer = response.json()['access_token']
+    return answer
 
 
 def create_main_image(access_token, product_id, file_id):
@@ -311,8 +295,7 @@ def create_main_image(access_token, product_id, file_id):
     return answer
 
 
-def get_img(context, client_id, client_secret, product_detail):
-    access_token = update_token(context, client_id, client_secret)
+def get_img(access_token, product_detail):
     image_id = product_detail['relationships']['main_image']['data']['id']
     url = f'https://api.moltin.com/v2/files/{image_id}'
     headers = {
@@ -371,9 +354,8 @@ def create_product(access_token, product):
     return answer
 
 
-def get_products(context, client_id, client_secret,):
+def get_products(access_token):
     url = 'https://api.moltin.com/v2/products'
-    access_token = update_token(context, client_id, client_secret,)
     headers = {
         'Authorization': f'Bearer {access_token}',
     }
@@ -383,9 +365,8 @@ def get_products(context, client_id, client_secret,):
     return answer
 
 
-def get_product_detail(context, client_id, client_secret, product_id):
+def get_product_detail(access_token, product_id):
     url = f'https://api.moltin.com/v2/products/{product_id}'
-    access_token = update_token(context, client_id, client_secret,)
     headers = {
         'Authorization': f'Bearer {access_token}',
     }
@@ -451,59 +432,12 @@ def connect_db():
     return db
 
 
-def update_token(context, client_id, client_secret):
-    db = connect_db()
-    user_id = context.user_data['user_id']
-    token_info = json.loads(db.get(user_id))
-    lifetime = token_info.get('expires_in')
-    birth_time = token_info.get('expires')
-    token_lifetime = sum([birth_time, float(lifetime)])
-    print(time.time())
-    print(token_lifetime)
-    if db.get(user_id):
-        token_info = json.loads(db.get(user_id))
-        live_token = get_token_on_db(
-            client_id,
-            client_secret,
-            token_info,
-            user_id,
-        )
-        return live_token
-    moltin_client_secret = client_secret
-    moltin_client_id = client_id
-    token_info = get_moltin_access_token_info(
-        moltin_client_id, moltin_client_secret, user_id,
-    )
-    live_token = token_info.get('access_token')
-    return live_token
-
-
-def get_token_on_db(client_id, client_secret, token_info, user_id):
-    timestamp = time.time()
-    lifetime = token_info.get('expires_in')
-    birthtime = token_info.get('expires')
-    token_lifetime = sum([birthtime, lifetime]) - 120 #Сокращаем время жизни токена на 120 секунд.
-    live_token = token_info.get('access_token')
-
-    if int(token_lifetime) > int(timestamp):
-        return live_token
-
-    return get_moltin_access_token_info(client_id, client_secret, user_id)
-
-
 def main():
     env = Env()
     env.read_env()
     client_id = env.str('MOLTIN_CLIENT_ID')
     client_secret = env.str('MOLTIN_CLIENT_SECRET')
     user_id = env.str('TG_CHAT_ID')
-
-    exit()
-    pprint(create_field_to_flow(access_token,
-           fields_for_flow, flow_id=get_flow_id()))
-    exit()
-    pprint(create_entry(access_token, flow_slug='pizzeria'))
-    exit()
 
 
 if __name__ == '__main__':
