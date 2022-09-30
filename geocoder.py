@@ -2,7 +2,7 @@ import requests
 from environs import Env
 from geopy import distance
 from moltin import get_all_entries
-from properties import flow_properties
+from flows_info.properties import flow_properties
 import textwrap as tw
 
 
@@ -61,7 +61,7 @@ def get_min_distance(access_token, context):
     return min_order_distance
 
 
-def get_delivery_info(context, min_order_distance):
+def get_delivery_info(min_order_distance):
     order_distance = min_order_distance['distance']
     pizzeria_address = min_order_distance['address']
 

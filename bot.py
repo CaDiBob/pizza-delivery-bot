@@ -14,7 +14,7 @@ from moltin import (add_addressee, connect_db, create_cart,
                     get_cart_info_products, get_cart_products, get_cart_sum,
                     get_img, get_moltin_access_token_info, get_product_detail,
                     get_product_info, get_products, put_product_to_cart,
-                    remove_cart_item)
+                    remove_cart_item,)
 
 (
     HANDLE_MENU,
@@ -202,7 +202,6 @@ def check_tg_location(update, context):
     coords = f'{current_position[0]},{current_position[1]}'
     addressee = fetch_coordinates(coords)
     context.user_data['addressee'] = addressee
-    add_addressee(access_token, context)
     min_distance_to_order = get_min_distance(access_token, context)
     context.user_data['min_distance_to_order'] = min_distance_to_order
     keyboard = [
@@ -211,7 +210,7 @@ def check_tg_location(update, context):
         [InlineKeyboardButton('Корзина', callback_data='Корзина')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    delivery_info = get_delivery_info(context, min_distance_to_order)
+    delivery_info = get_delivery_info(min_distance_to_order)
     update.message.reply_text(delivery_info, reply_markup=reply_markup)
     return HANDLE_DELIVERY
 
@@ -225,7 +224,6 @@ def check_address_text(update, context):
     context.user_data['addressee'] = addressee
     if not addressee:
         update.message.reply_text('Введите корректный адрес')
-    add_addressee(access_token, context)
     min_distance_to_order = get_min_distance(access_token, context)
     context.user_data['min_distance_to_order'] = min_distance_to_order
     keyboard = [
@@ -234,7 +232,7 @@ def check_address_text(update, context):
         [InlineKeyboardButton('Корзина', callback_data='Корзина')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    delivery_info = get_delivery_info(context, min_distance_to_order)
+    delivery_info = get_delivery_info(min_distance_to_order)
     update.message.reply_text(delivery_info, reply_markup=reply_markup)
     return HANDLE_DELIVERY
 
@@ -247,12 +245,15 @@ def send_delivery_info_to_deliverer(update, context):
     addressee_lon, addressee_lat = addressee
     deliverer_tg_id = min_distance_to_order['deliverer_tg_id']
     user_id = context.user_data['user_id']
-    add_addressee(access_token, context)
     db = connect_db()
-    devivery_car_id = db.get(f'for_car_{user_id}')
-    cart_products = get_cart_products(access_token, devivery_car_id)
+    devivery_cart_id = db.get(f'for_car_{user_id}')
+    context.user_data['devivery_cart_id'] = devivery_cart_id
+    add_addressee(access_token, context)
+    context.job_queue.run_once(
+        send_notification_customer, 3600, context=user_id)
+    cart_products = get_cart_products(access_token, devivery_cart_id)
     cart_info = get_cart_info_products(cart_products)
-    cart_sum = get_cart_sum(access_token, devivery_car_id)
+    cart_sum = get_cart_sum(access_token, devivery_cart_id)
     bot.send_message(
         text=tw.dedent(
             f'Новая доставка: {cart_info}\n{cart_sum}'
@@ -285,10 +286,24 @@ def send_info_for_pickup(update, context):
     )
     bot.send_message(
         chat_id=user_id,
-        text= f'Ближайщая пиццерия: {pizzeria_address}',
+        text=f'Ближайщая пиццерия: {pizzeria_address}',
         reply_markup=reply_markup
     )
     return HANDLE_MENU
+
+
+def send_notification_customer(context):
+    bot = context.bot
+    user_id = context.job.context
+    text = tw.dedent('''
+    Приятного аппетита! *место для рекламы*
+    *сообщение что делать если пицца не пришла*
+    '''
+                     )
+    bot.send_message(
+        text=text,
+        chat_id=user_id
+    )
 
 
 def cancel(update, context):
@@ -315,7 +330,6 @@ def main():
     logger.addHandler(TelegramLogsHandler(tg_chat_id, bot))
     dispatcher = updater.dispatcher
     dispatcher.bot_data['access_token'] = access_token
-
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', handle_menu)],
         states={

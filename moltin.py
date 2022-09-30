@@ -10,7 +10,7 @@ from pprint import pprint
 
 from transliterate import translit
 
-from properties import (
+from flows_info.properties import (
     fields_for_flow,
     flow_properties,
     user_flow_properties,
@@ -20,7 +20,7 @@ from properties import (
 
 
 def add_deliverer_for_pizzeria(access_token, deliverer_tg_id):
-    flow_slug=flow_properties['slug']
+    flow_slug = flow_properties['slug']
     pizzeries = get_all_entries(access_token, flow_slug)['data']
     for pizzeria in pizzeries:
         values = {
@@ -281,6 +281,7 @@ def create_field_to_flow(access_token, flow_id, fields_for_flow):
     answer = response.json()
     return answer
 
+
 def save_flow_info_to_txt(answer):
     flow_name = answer['data']['slug']
     flow_id = answer['data']['id']
@@ -290,9 +291,9 @@ def save_flow_info_to_txt(answer):
         file.write(flow_id)
 
 
-def get_flow_id():
+def get_flow_id(filename):
     folder = 'flows_info'
-    with open(os.path.join(folder, f'flow_pizzeria.txt'))as file:
+    with open(os.path.join(folder, filename))as file:
         flow_id = file.read()
     return flow_id
 
@@ -484,18 +485,19 @@ def add_addressee(access_token, context):
     flow_slug = user_flow_properties['slug']
     addressee = context.user_data['addressee']
     addressee_lon, addressee_lat = addressee
+    devivery_cart_id = context.user_data['devivery_cart_id']
     user_id = context.user_data['user_id']
     values = {
         'user_id': user_id,
+        'cart_id': devivery_cart_id,
         'lon': addressee_lon,
         'lat': addressee_lat,
     }
     try:
         create_entry(access_token, values, flow_slug)
     except requests.exceptions.HTTPError as err:
-            logger.error(err)
+        logger.error(err)
     return 'Upload complided'
-
 
 
 def add_addresses(access_token):
@@ -511,7 +513,7 @@ def add_addresses(access_token):
             }
             create_entry(access_token, values, flow_slug)
         except requests.exceptions.HTTPError as err:
-            print(err)
+            logger.error(err)
     return 'Upload complided'
 
 
@@ -535,7 +537,8 @@ def main():
     user_id = env.str('TG_CHAT_ID')
     access_token = get_moltin_access_token_info(client_id, client_secret)
     flow_slug = flow_properties['slug']
-    pprint(get_all_entries(access_token, flow_slug))
+    flow_id = get_flow_id(filename='flow_buyers.txt')
+    pprint(create_fields_to_flow(access_token, flow_id, fields_for_user_flow))
 
 
 if __name__ == '__main__':
