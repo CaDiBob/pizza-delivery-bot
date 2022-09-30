@@ -28,7 +28,7 @@ def fetch_coordinates(address):
     return float(lon), float(lat)
 
 
-def get_distances(access_token, context):
+def get_min_distance(access_token, context):
     addressee = context.user_data['addressee']
     addressee_lon, addressee_lat = addressee
     flow_slug = flow_properties['slug']
@@ -48,19 +48,20 @@ def get_distances(access_token, context):
         one_route.update(
             {
                 'address': address,
+                'pizzeria_lon': lon,
+                'pizzeria_lat': lat,
                 'distance': distance_for_order,
                 'deliverer_tg_id': deliverer_tg_id,
             }
         )
         distances.append(one_route)
-    return distances
-
-
-def get_distance_text_for_info(context, distances):
     min_order_distance = min(
         distances, key=lambda distance: distance['distance']
     )
-    context.user_data['min_order_distance'] = min_order_distance
+    return min_order_distance
+
+
+def get_delivery_info(context, min_order_distance):
     order_distance = min_order_distance['distance']
     pizzeria_address = min_order_distance['address']
 

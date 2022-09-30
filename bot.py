@@ -8,8 +8,8 @@ from telegram.ext import (CallbackQueryHandler, CommandHandler,
                           ConversationHandler, Filters, MessageHandler,
                           Updater)
 
-from geocoder import (fetch_coordinates, get_distance_text_for_info,
-                      get_distances)
+from geocoder import (fetch_coordinates, get_delivery_info,
+                      get_min_distance)
 from moltin import (add_addressee, connect_db, create_cart,
                     get_cart_info_products, get_cart_products, get_cart_sum,
                     get_img, get_moltin_access_token_info, get_product_detail,
@@ -193,7 +193,7 @@ def handle_waiting(update, context):
     return HANDLE_WAITING
 
 
-def check_coordinates(update, context):
+def check_tg_location(update, context):
     user_id = update.effective_user.id
     context.user_data['user_id'] = user_id
     access_token = context.bot_data['access_token']
@@ -202,7 +202,8 @@ def check_coordinates(update, context):
     coords = f'{current_position[0]},{current_position[1]}'
     addressee = fetch_coordinates(coords)
     context.user_data['addressee'] = addressee
-    min_distance_to_order = get_distances(access_token, context)
+    add_addressee(access_token, context)
+    min_distance_to_order = get_min_distance(access_token, context)
     context.user_data['min_distance_to_order'] = min_distance_to_order
     keyboard = [
         [InlineKeyboardButton('Доставка', callback_data='Доставка')],
@@ -210,12 +211,12 @@ def check_coordinates(update, context):
         [InlineKeyboardButton('Корзина', callback_data='Корзина')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    delivery_info = get_distance_text_for_info(context, min_distance_to_order)
+    delivery_info = get_delivery_info(context, min_distance_to_order)
     update.message.reply_text(delivery_info, reply_markup=reply_markup)
     return HANDLE_DELIVERY
 
 
-def check_address(update, context):
+def check_address_text(update, context):
     user_id = update.effective_user.id
     context.user_data['user_id'] = user_id
     access_token = context.bot_data['access_token']
@@ -225,7 +226,7 @@ def check_address(update, context):
     if not addressee:
         update.message.reply_text('Введите корректный адрес')
     add_addressee(access_token, context)
-    min_distance_to_order = get_distances(access_token, context)
+    min_distance_to_order = get_min_distance(access_token, context)
     context.user_data['min_distance_to_order'] = min_distance_to_order
     keyboard = [
         [InlineKeyboardButton('Доставка', callback_data='Доставка')],
@@ -233,7 +234,7 @@ def check_address(update, context):
         [InlineKeyboardButton('Корзина', callback_data='Корзина')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    delivery_info = get_distance_text_for_info(context, min_distance_to_order)
+    delivery_info = get_delivery_info(context, min_distance_to_order)
     update.message.reply_text(delivery_info, reply_markup=reply_markup)
     return HANDLE_DELIVERY
 
@@ -242,9 +243,9 @@ def send_delivery_info_to_deliverer(update, context):
     access_token = context.bot_data['access_token']
     addressee = context.user_data['addressee']
     bot = context.bot
-    min_order_distance = context.user_data['min_order_distance']
+    min_distance_to_order = context.user_data['min_distance_to_order']
     addressee_lon, addressee_lat = addressee
-    deliverer_tg_id = min_order_distance['deliverer_tg_id']
+    deliverer_tg_id = min_distance_to_order['deliverer_tg_id']
     user_id = context.user_data['user_id']
     add_addressee(access_token, context)
     db = connect_db()
@@ -264,6 +265,30 @@ def send_delivery_info_to_deliverer(update, context):
         longitude=addressee_lon,
     )
     return HANDLE_DELIVERY
+
+
+def send_info_for_pickup(update, context):
+    bot = context.bot
+    user_id = update.effective_user.id
+    min_distance_to_order = context.user_data['min_distance_to_order']
+    pizzeria_lon = min_distance_to_order['pizzeria_lon']
+    pizzeria_lat = min_distance_to_order['pizzeria_lat']
+    pizzeria_address = min_distance_to_order['address']
+    keyboard = [
+        [InlineKeyboardButton('Меню', callback_data='Меню')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    bot.send_location(
+        chat_id=user_id,
+        latitude=pizzeria_lat,
+        longitude=pizzeria_lon,
+    )
+    bot.send_message(
+        chat_id=user_id,
+        text= f'Ближайщая пиццерия: {pizzeria_address}',
+        reply_markup=reply_markup
+    )
+    return HANDLE_MENU
 
 
 def cancel(update, context):
@@ -313,8 +338,9 @@ def main():
                 CallbackQueryHandler(remove_item),
             ],
             HANDLE_WAITING: [
-                MessageHandler(Filters.location, check_coordinates),
-                MessageHandler(Filters.text & ~Filters.command, check_address),
+                MessageHandler(Filters.location, check_tg_location),
+                MessageHandler(Filters.text & ~Filters.command,
+                               check_address_text),
                 CallbackQueryHandler(handle_waiting, pattern=r'Ввести снова'),
             ],
             HANDLE_DELIVERY: [
@@ -322,6 +348,11 @@ def main():
                 CallbackQueryHandler(
                     send_delivery_info_to_deliverer, pattern='Доставка'
                 ),
+                CallbackQueryHandler(
+                    send_info_for_pickup,
+                    pattern='Самовывоз'
+                ),
+                CallbackQueryHandler(handle_menu, pattern=r'Меню'),
             ]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
