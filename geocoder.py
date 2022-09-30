@@ -28,7 +28,8 @@ def fetch_coordinates(address):
     return float(lon), float(lat)
 
 
-def get_distance(access_token, addressee):
+def get_distances(access_token, context):
+    addressee = context.user_data['addressee']
     addressee_lon, addressee_lat = addressee
     flow_slug = flow_properties['slug']
     pizzerias_addresses = get_all_entries(access_token, flow_slug)['data']
@@ -36,8 +37,10 @@ def get_distance(access_token, addressee):
     for pizzeria_address in pizzerias_addresses:
         one_route = dict()
         address = pizzeria_address['address']
+        deliverer_tg_id = pizzeria_address['deliverer_tg_id']
         lon = pizzeria_address['lon']
         lat = pizzeria_address['lat']
+
         distance_for_order = round(
             distance.distance((addressee_lat, addressee_lon),
                               (lat, lon)).meters,
@@ -46,40 +49,41 @@ def get_distance(access_token, addressee):
             {
                 'address': address,
                 'distance': distance_for_order,
+                'deliverer_tg_id': deliverer_tg_id,
             }
         )
         distances.append(one_route)
     return distances
 
 
-def get_text_distance(distances):
-    order_distances = [distance['distance'] for distance in distances]
-    min_order_distance = min(order_distances)
-    if min_order_distance in range(0, 501):
-        pizzeria_address = [
-            distance['address']
-            for distance in distances if min_order_distance == distance['distance']
-        ]
-        pizzeria_address , *_ = pizzeria_address
+def get_distance_text_for_info(context, distances):
+    min_order_distance = min(
+        distances, key=lambda distance: distance['distance']
+    )
+    context.user_data['min_order_distance'] = min_order_distance
+    order_distance = min_order_distance['distance']
+    pizzeria_address = min_order_distance['address']
+
+    if order_distance in range(0, 501):
         return tw.dedent(f'''
         Может, зберете пиццу из нашей пиццерии неподалеку?
-        она всего в {min_order_distance} метрах от вас!
+        она всего в {order_distance} метрах от вас!
         Вот её адрес: {pizzeria_address}
         А можем и беплатно доставить, нам не сложно.
         ''')
-    elif min_order_distance in range(502, 5001):
+    elif order_distance in range(502, 5001):
         return tw.dedent(f'''
-        Похоже к вам придется ехать. Доствака будет стоить 100 рубдей.
+        Похоже к вам придется ехать. Доставка будет стоить 100 рублей.
         Доставка или самовывоз?
         ''')
-    elif min_order_distance in range(5002, 20001):
+    elif order_distance in range(5002, 20001):
         return tw.dedent(f'''
-        Похоже к вам придется ехать. Доствака будет стоить 300 рубдей.
+        Похоже к вам придется ехать. Доставка будет стоить 300 рублей.
         Доставка или самовывоз?
         ''')
     else:
-        min_order_distance = min_order_distance / 1000
+        order_distance = order_distance / 1000
         return tw.dedent(f'''
         Извините так далеко мы пиццу не доставим. Ближайщая пиццерия
-        аж в {min_order_distance} километрах от вас
+        аж в {order_distance} километрах от вас
         ''')

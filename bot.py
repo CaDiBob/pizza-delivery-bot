@@ -1,47 +1,29 @@
 import logging
-from pprint import pprint
+import textwrap as tw
+
 import telegram
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
-from telegram.ext import (
-    CallbackQueryHandler,
-    CommandHandler,
-    ConversationHandler,
-    MessageHandler,
-    Filters,
-    Updater,
-)
 from environs import Env
-from geocoder import (
-    fetch_coordinates,
-    get_distance,
-    get_text_distance,
-)
-from moltin import (
-    connect_db,
-    create_cart,
-    get_cart_products,
-    get_img,
-    get_moltin_access_token_info,
-    get_products,
-    get_product_detail,
-    get_product_info,
-    get_cart_info_products,
-    get_cart_sum,
-    put_product_to_cart,
-    remove_cart_item
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (CallbackQueryHandler, CommandHandler,
+                          ConversationHandler, Filters, MessageHandler,
+                          Updater)
 
+from geocoder import (fetch_coordinates, get_distance_text_for_info,
+                      get_distances)
+from moltin import (add_addressee, connect_db, create_cart,
+                    get_cart_info_products, get_cart_products, get_cart_sum,
+                    get_img, get_moltin_access_token_info, get_product_detail,
+                    get_product_info, get_products, put_product_to_cart,
+                    remove_cart_item)
 
-HANDLE_MENU, HANDLE_DESCRIPTION, HANDLE_CART, HANDLE_WAITING = range(4)
+(
+    HANDLE_MENU,
+    HANDLE_DESCRIPTION,
+    HANDLE_CART,
+    HANDLE_WAITING,
+    HANDLE_DELIVERY,
+) = range(5)
 
-
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
 logger = logging.getLogger(__name__)
 
 
@@ -58,20 +40,18 @@ class TelegramLogsHandler(logging.Handler):
 
 
 def handle_menu(update, context):
-    logger.info('handle_menu')
     user_id = update.effective_user.id
     context.user_data['user_id'] = user_id
     db = connect_db()
     access_token = context.bot_data['access_token']
     products = get_products(access_token)
     context.user_data['products'] = products
-    if not db.get(f'for_car_{user_id}'):
+    if not db.get(f'for_cart_{user_id}'):
         cart_id = create_cart(access_token, user_id)
-        db.set(f'for_car_{user_id}', cart_id)
-    cart_id = db.get(f'for_car_{user_id}')
+        db.set(f'for_cart_{user_id}', cart_id)
+    cart_id = db.get(f'for_cart_{user_id}')
     context.user_data['cart_id'] = cart_id
     bot = context.bot
-    user_id = update.effective_user.id
     text = 'Добро пожаловать в нашу сеть пиццерий "Пиццеляндия"!'
     keyboard = list()
     for product in products['data']:
@@ -98,7 +78,6 @@ def handle_menu(update, context):
 
 
 def handle_description(update, context):
-    logger.info('handle_description')
     bot = context.bot
     user_id = update.effective_user.id
     product_id = update.callback_query.data
@@ -215,27 +194,76 @@ def handle_waiting(update, context):
 
 
 def check_coordinates(update, context):
+    user_id = update.effective_user.id
+    context.user_data['user_id'] = user_id
     access_token = context.bot_data['access_token']
     message = update.message
     current_position = (message.location.longitude, message.location.latitude)
     coords = f'{current_position[0]},{current_position[1]}'
     addressee = fetch_coordinates(coords)
-    min_distance_to_order = get_distance(access_token, addressee)
-    text = get_text_distance(min_distance_to_order)
-    update.message.reply_text(text)
-    return HANDLE_WAITING
+    context.user_data['addressee'] = addressee
+    min_distance_to_order = get_distances(access_token, context)
+    context.user_data['min_distance_to_order'] = min_distance_to_order
+    keyboard = [
+        [InlineKeyboardButton('Доставка', callback_data='Доставка')],
+        [InlineKeyboardButton('Самовывоз', callback_data='Самовывоз')],
+        [InlineKeyboardButton('Корзина', callback_data='Корзина')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    delivery_info = get_distance_text_for_info(context, min_distance_to_order)
+    update.message.reply_text(delivery_info, reply_markup=reply_markup)
+    return HANDLE_DELIVERY
 
 
 def check_address(update, context):
+    user_id = update.effective_user.id
+    context.user_data['user_id'] = user_id
     access_token = context.bot_data['access_token']
     coords = update.message.text
     addressee = fetch_coordinates(coords)
+    context.user_data['addressee'] = addressee
     if not addressee:
         update.message.reply_text('Введите корректный адрес')
-    min_distance_to_order = get_distance(access_token, addressee)
-    text = get_text_distance(min_distance_to_order)
-    update.message.reply_text(text)
-    return HANDLE_WAITING
+    add_addressee(access_token, context)
+    min_distance_to_order = get_distances(access_token, context)
+    context.user_data['min_distance_to_order'] = min_distance_to_order
+    keyboard = [
+        [InlineKeyboardButton('Доставка', callback_data='Доставка')],
+        [InlineKeyboardButton('Самовывоз', callback_data='Самовывоз')],
+        [InlineKeyboardButton('Корзина', callback_data='Корзина')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    delivery_info = get_distance_text_for_info(context, min_distance_to_order)
+    update.message.reply_text(delivery_info, reply_markup=reply_markup)
+    return HANDLE_DELIVERY
+
+
+def send_delivery_info_to_deliverer(update, context):
+    access_token = context.bot_data['access_token']
+    addressee = context.user_data['addressee']
+    bot = context.bot
+    min_order_distance = context.user_data['min_order_distance']
+    addressee_lon, addressee_lat = addressee
+    deliverer_tg_id = min_order_distance['deliverer_tg_id']
+    user_id = context.user_data['user_id']
+    add_addressee(access_token, context)
+    db = connect_db()
+    devivery_car_id = db.get(f'for_car_{user_id}')
+    cart_products = get_cart_products(access_token, devivery_car_id)
+    cart_info = get_cart_info_products(cart_products)
+    cart_sum = get_cart_sum(access_token, devivery_car_id)
+    bot.send_message(
+        text=tw.dedent(
+            f'Новая доставка: {cart_info}\n{cart_sum}'
+        ),
+        chat_id=deliverer_tg_id,
+    )
+    bot.send_location(
+        chat_id=deliverer_tg_id,
+        latitude=addressee_lat,
+        longitude=addressee_lon,
+    )
+    return HANDLE_DELIVERY
 
 
 def cancel(update, context):
@@ -261,8 +289,6 @@ def main():
     bot = telegram.Bot(tg_token)
     logger.addHandler(TelegramLogsHandler(tg_chat_id, bot))
     dispatcher = updater.dispatcher
-    dispatcher.bot_data['client_id'] = client_id
-    dispatcher.bot_data['client_secret'] = client_secret
     dispatcher.bot_data['access_token'] = access_token
 
     conv_handler = ConversationHandler(
@@ -290,6 +316,12 @@ def main():
                 MessageHandler(Filters.location, check_coordinates),
                 MessageHandler(Filters.text & ~Filters.command, check_address),
                 CallbackQueryHandler(handle_waiting, pattern=r'Ввести снова'),
+            ],
+            HANDLE_DELIVERY: [
+                CallbackQueryHandler(cart_info, pattern='Корзина'),
+                CallbackQueryHandler(
+                    send_delivery_info_to_deliverer, pattern='Доставка'
+                ),
             ]
         },
         fallbacks=[CommandHandler('cancel', cancel)],

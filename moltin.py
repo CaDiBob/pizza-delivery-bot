@@ -1,13 +1,33 @@
 #!/usr/bin/env python
+from asyncio.log import logger
+from optparse import Values
 import os
 import redis
 import requests
 from environs import Env
 import textwrap as tw
+from pprint import pprint
 
 from transliterate import translit
 
-from properties import fields_for_flow, flow_properties
+from properties import (
+    fields_for_flow,
+    flow_properties,
+    user_flow_properties,
+    fields_for_user_flow,
+    tg_id_field,
+)
+
+
+def add_deliverer_for_pizzeria(access_token, deliverer_tg_id):
+    flow_slug=flow_properties['slug']
+    pizzeries = get_all_entries(access_token, flow_slug)['data']
+    for pizzeria in pizzeries:
+        values = {
+            'id': pizzeria['id'],
+            'deliverer_tg_id': deliverer_tg_id,
+        }
+        update_entry(access_token, values, flow_slug)
 
 
 def get_cart_sum(access_token, cart_id):
@@ -44,7 +64,7 @@ def get_cart_info_products(products):
         {title}
         {description}
         {price}
-        В корзине {quantity} шт.
+        Количество {quantity} шт.
         ''')
     return products_info
 
@@ -164,8 +184,27 @@ def create_entry(access_token, values, flow_slug):
     return answer
 
 
-def create_field_to_flow(access_token, flow_id):
-    fields_for_flow = fields_for_flow
+def update_entry(access_token, values, flow_slug):
+    entry_id = values['id']
+    url = f'https://api.moltin.com/v2/flows/{flow_slug}/entries/{entry_id}'
+    headers = {
+        'Authorization': f'{access_token}',
+    }
+    json_data = {
+        'data': {
+            'type': 'entry',
+        },
+    }
+    json_data['data'].update(
+        values
+    )
+    response = requests.put(url, headers=headers, json=json_data)
+    response.raise_for_status()
+    answer = response.json()
+    return answer
+
+
+def create_fields_to_flow(access_token, flow_id, fields_for_flow):
     url = 'https://api.moltin.com/v2/fields'
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -175,6 +214,7 @@ def create_field_to_flow(access_token, flow_id):
             'type': 'field',
         },
     }
+    answers = list()
     for field in fields_for_flow:
         json_data['data'].update(
             {
@@ -200,9 +240,46 @@ def create_field_to_flow(access_token, flow_id):
         )
         response = requests.post(url, headers=headers, json=json_data)
         response.raise_for_status()
-        answer = response.json()
-    return answer
+        answers.append(response.json())
+    return answers
 
+
+def create_field_to_flow(access_token, flow_id, fields_for_flow):
+    url = 'https://api.moltin.com/v2/fields'
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+    }
+    json_data = {
+        'data': {
+            'type': 'field',
+        },
+    }
+    json_data['data'].update(
+        {
+            'name': fields_for_flow['name'],
+            'slug': fields_for_flow['slug'],
+            'field_type': fields_for_flow['field_type'],
+            'description': fields_for_flow['description'],
+            'required': True,
+            'enabled': True,
+            'omit_null': False,
+            'relationships':
+            {
+                'flow':
+                {
+                    'data':
+                    {
+                        'type': 'flow',
+                        'id': flow_id,
+                    },
+                },
+            },
+        }
+    )
+    response = requests.post(url, headers=headers, json=json_data)
+    response.raise_for_status()
+    answer = response.json()
+    return answer
 
 def save_flow_info_to_txt(answer):
     flow_name = answer['data']['slug']
@@ -403,6 +480,24 @@ def get_addresses():
     return answer
 
 
+def add_addressee(access_token, context):
+    flow_slug = user_flow_properties['slug']
+    addressee = context.user_data['addressee']
+    addressee_lon, addressee_lat = addressee
+    user_id = context.user_data['user_id']
+    values = {
+        'user_id': user_id,
+        'lon': addressee_lon,
+        'lat': addressee_lat,
+    }
+    try:
+        create_entry(access_token, values, flow_slug)
+    except requests.exceptions.HTTPError as err:
+            logger.error(err)
+    return 'Upload complided'
+
+
+
 def add_addresses(access_token):
     addresses = get_addresses()
     flow_slug = flow_properties['slug']
@@ -438,6 +533,9 @@ def main():
     client_id = env.str('MOLTIN_CLIENT_ID')
     client_secret = env.str('MOLTIN_CLIENT_SECRET')
     user_id = env.str('TG_CHAT_ID')
+    access_token = get_moltin_access_token_info(client_id, client_secret)
+    flow_slug = flow_properties['slug']
+    pprint(get_all_entries(access_token, flow_slug))
 
 
 if __name__ == '__main__':
