@@ -2,7 +2,7 @@ import requests
 from environs import Env
 from geopy import distance
 from moltin import get_all_entries
-from flows_info.properties import flow_properties
+from properties import flow_properties
 import textwrap as tw
 
 

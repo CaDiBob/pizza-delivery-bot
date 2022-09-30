@@ -10,7 +10,7 @@ from pprint import pprint
 
 from transliterate import translit
 
-from flows_info.properties import (
+from properties import (
     fields_for_flow,
     flow_properties,
     user_flow_properties,
