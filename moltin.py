@@ -1,21 +1,14 @@
-#!/usr/bin/env python
-from asyncio.log import logger
-from optparse import Values
 import os
 import redis
 import requests
 from environs import Env
 import textwrap as tw
-from pprint import pprint
-
+import time
 from transliterate import translit
 
 from properties import (
-    fields_for_flow,
     flow_properties,
     user_flow_properties,
-    fields_for_user_flow,
-    tg_id_field,
 )
 
 
@@ -352,8 +345,18 @@ def get_moltin_access_token_info(client_id, client_secret):
     }
     response = requests.post(url, data=data)
     response.raise_for_status()
-    answer = response.json()['access_token']
+    answer = response.json() #['access_token']
     return answer
+
+
+def update_access_token(access_token_info, client_id, client_secret):
+    curret_time = time.time()
+    birth_time = access_token_info['expires']
+    lifetime = access_token_info['expires_in']
+    access_token = access_token_info['access_token']
+    if curret_time > (birth_time + lifetime):
+        return get_moltin_access_token_info(client_id, client_secret)
+    return access_token
 
 
 def create_main_image(access_token, product_id, file_id):
@@ -527,19 +530,3 @@ def connect_db():
         decode_responses=True,
     )
     return db
-
-
-def main():
-    env = Env()
-    env.read_env()
-    client_id = env.str('MOLTIN_CLIENT_ID')
-    client_secret = env.str('MOLTIN_CLIENT_SECRET')
-    user_id = env.str('TG_CHAT_ID')
-    access_token = get_moltin_access_token_info(client_id, client_secret)
-    flow_slug = flow_properties['slug']
-    flow_id = get_flow_id(filename='flow_buyers.txt')
-    pprint(create_fields_to_flow(access_token, flow_id, fields_for_user_flow))
-
-
-if __name__ == '__main__':
-    main()

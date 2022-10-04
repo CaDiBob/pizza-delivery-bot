@@ -14,7 +14,7 @@ from moltin import (add_addressee, connect_db, create_cart,
                     get_cart_info_products, get_cart_products, get_cart_sum,
                     get_img, get_moltin_access_token_info, get_product_detail,
                     get_product_info, get_products, put_product_to_cart,
-                    remove_cart_item,)
+                    remove_cart_item, update_access_token,)
 
 (
     HANDLE_MENU,
@@ -413,7 +413,8 @@ def main():
     client_id = env('MOLTIN_CLIENT_ID')
     client_secret = env('MOLTIN_CLIENT_SECRET')
     payment_token = env('PAYMENT_TOKEN')
-    access_token = get_moltin_access_token_info(client_id, client_secret)
+    access_token_info = get_moltin_access_token_info(client_id, client_secret)
+    access_token = update_access_token(access_token_info, client_id, client_secret)
     updater = Updater(tg_token)
     bot = telegram.Bot(tg_token)
     logger.addHandler(TelegramLogsHandler(tg_chat_id, bot))
