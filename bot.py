@@ -54,16 +54,11 @@ def handle_menu(update, context):
     context.user_data['cart_id'] = cart_id
     bot = context.bot
     text = 'Добро пожаловать в нашу сеть пиццерий "Пиццеляндия"!'
-    keyboard = list()
-    for product in products['data']:
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    product['name'],
-                    callback_data=product['id']
-                )
-            ],
-        )
+
+    keyboard = [
+        [InlineKeyboardButton(product['name'], callback_data=product['id'])]
+        for product in products['data']
+    ]
     keyboard.append(
         [
             InlineKeyboardButton('Корзина', callback_data='Корзина')
@@ -339,7 +334,6 @@ def handle_pickup(update, context):
         prices=[LabeledPrice('Заказ из пиццерии', cart_sum * 100)],
     )
     return HANDLE_USER_REPLY
-
 
 
 def handle_delivery(update, context):
