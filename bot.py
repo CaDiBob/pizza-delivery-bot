@@ -389,7 +389,7 @@ def successful_payment_callback(update, context):
             'Спасибо! Ваши данные переданы курьеру',
             reply_markup=reply_markup
         )
-    if query == 'Самовывоз':
+    elif query == 'Самовывоз':
         send_info_for_pickup(update, context)
     return HANDLE_MENU
 

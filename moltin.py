@@ -499,7 +499,7 @@ def add_addressee(access_token, context):
     try:
         create_entry(access_token, values, flow_slug)
     except requests.exceptions.HTTPError as err:
-        logger.error(err)
+        print(err)
     return 'Upload complided'
 
 
@@ -516,7 +516,7 @@ def add_addresses(access_token):
             }
             create_entry(access_token, values, flow_slug)
         except requests.exceptions.HTTPError as err:
-            logger.error(err)
+            print(err)
     return 'Upload complided'
 
 
