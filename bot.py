@@ -414,7 +414,8 @@ def main():
     client_secret = env('MOLTIN_CLIENT_SECRET')
     payment_token = env('PAYMENT_TOKEN')
     access_token_info = get_moltin_access_token_info(client_id, client_secret)
-    access_token = update_access_token(access_token_info, client_id, client_secret)
+    access_token = update_access_token(
+        access_token_info, client_id, client_secret)
     updater = Updater(tg_token)
     bot = telegram.Bot(tg_token)
     logger.addHandler(TelegramLogsHandler(tg_chat_id, bot))
