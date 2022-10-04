@@ -38,8 +38,8 @@ def get_cart_sum(access_token, cart_id):
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     answer = response.json()['data']
-    total_price = answer['meta']['display_price']['with_tax']['formatted']
-    return f'Общая сумма товаров: {total_price}'
+    total_price = answer['meta']['display_price']['with_tax']['amount']
+    return total_price
 
 
 def get_cart_products(access_token, cart_id):
@@ -57,13 +57,13 @@ def get_cart_info_products(products):
     products_info = str()
     for product in products:
         title = product['name']
-        price = product['meta']['display_price']['with_tax']['unit']['formatted']
+        price = product['meta']['display_price']['with_tax']['unit']['amount']
         quantity = product['quantity']
         description = product['description']
         products_info += tw.dedent(f'''
         {title}
         {description}
-        {price}
+        ₽{price}
         Количество {quantity} шт.
         ''')
     return products_info
@@ -455,11 +455,11 @@ def get_product_detail(access_token, product_id):
 
 
 def get_product_info(product_detail):
-    price = product_detail['meta']['display_price']['with_tax']['formatted']
+    price = product_detail['meta']['display_price']['with_tax']['amount']
     title = product_detail['name']
     description = product_detail['description']
     return tw.dedent(f'''
-    {title} {price}.
+    {title} ₽{price}.
 
     {description}
     ''')

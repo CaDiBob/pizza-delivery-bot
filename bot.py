@@ -3,10 +3,10 @@ import textwrap as tw
 
 import telegram
 from environs import Env
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import (CallbackQueryHandler, CommandHandler,
                           ConversationHandler, Filters, MessageHandler,
-                          Updater)
+                          PreCheckoutQueryHandler, Updater)
 
 from geocoder import (fetch_coordinates, get_delivery_info,
                       get_min_distance)
@@ -22,7 +22,8 @@ from moltin import (add_addressee, connect_db, create_cart,
     HANDLE_CART,
     HANDLE_WAITING,
     HANDLE_DELIVERY,
-) = range(5)
+    HANDLE_USER_REPLY,
+) = range(6)
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ def add_product_to_cart(update, context):
     cart_id = context.user_data['cart_id']
     product_id = context.user_data['product_id']
     put_product_to_cart(access_token, cart_id, product_id, quantity=1)
+    update.callback_query.answer('Товар добавлен в корзину')
     return HANDLE_DESCRIPTION
 
 
@@ -117,6 +119,8 @@ def cart_info(update, context):
     cart_products = get_cart_products(access_token, cart_id)
     cart_info = get_cart_info_products(cart_products)
     cart_sum = get_cart_sum(access_token, cart_id)
+    context.user_data['cart_sum'] = cart_sum
+    context.user_data['cart_info'] = cart_info
     keyboard = list()
     for product in cart_products:
         title = product['name']
@@ -147,8 +151,9 @@ def cart_info(update, context):
         ]
     )
     reply_markup = InlineKeyboardMarkup(keyboard)
+    text = f'{cart_info}\nОбщая сумма товаров: ₽{cart_sum}'
     bot.send_message(
-        text=f'{cart_info}\n{cart_sum}',
+        text=text,
         chat_id=user_id,
         reply_markup=reply_markup,
     )
@@ -210,7 +215,7 @@ def check_tg_location(update, context):
         [InlineKeyboardButton('Корзина', callback_data='Корзина')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    delivery_info = get_delivery_info(min_distance_to_order)
+    delivery_info = get_delivery_info(context, min_distance_to_order)
     update.message.reply_text(delivery_info, reply_markup=reply_markup)
     return HANDLE_DELIVERY
 
@@ -232,12 +237,12 @@ def check_address_text(update, context):
         [InlineKeyboardButton('Корзина', callback_data='Корзина')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    delivery_info = get_delivery_info(min_distance_to_order)
+    delivery_info = get_delivery_info(context, min_distance_to_order)
     update.message.reply_text(delivery_info, reply_markup=reply_markup)
     return HANDLE_DELIVERY
 
 
-def send_delivery_info_to_deliverer(update, context):
+def send_delivery_info_to_deliverer(context):
     access_token = context.bot_data['access_token']
     addressee = context.user_data['addressee']
     bot = context.bot
@@ -251,12 +256,11 @@ def send_delivery_info_to_deliverer(update, context):
     add_addressee(access_token, context)
     context.job_queue.run_once(
         send_notification_customer, 3600, context=user_id)
-    cart_products = get_cart_products(access_token, devivery_cart_id)
-    cart_info = get_cart_info_products(cart_products)
-    cart_sum = get_cart_sum(access_token, devivery_cart_id)
+    cart_sum = context.user_data['cart_sum']
+    cart_info = context.user_data['cart_info']
     bot.send_message(
         text=tw.dedent(
-            f'Новая доставка: {cart_info}\n{cart_sum}'
+            f'Новая доставка: {cart_info}\n Сумма: ₽{cart_sum}'
         ),
         chat_id=deliverer_tg_id,
     )
@@ -284,9 +288,10 @@ def send_info_for_pickup(update, context):
         latitude=pizzeria_lat,
         longitude=pizzeria_lon,
     )
+    text = f'Спасибо за оплату!\nБлижайщая пиццерия: {pizzeria_address}'
     bot.send_message(
         chat_id=user_id,
-        text=f'Ближайщая пиццерия: {pizzeria_address}',
+        text=text,
         reply_markup=reply_markup
     )
     return HANDLE_MENU
@@ -304,6 +309,95 @@ def send_notification_customer(context):
         text=text,
         chat_id=user_id
     )
+
+
+def handle_pickup(update, context):
+    query = update.callback_query.data
+    context.user_data['delivery_mode'] = query
+    cart_sum = context.user_data['cart_sum']
+    bot = context.bot
+    user_id = update.effective_user.id
+    text = tw.dedent(
+        f'''
+        Вы выбрали cамовывоз, теперь можете оплатить ваш заказ.
+        Сумма к оплате: ₽{cart_sum}
+        '''
+    )
+    bot.send_message(
+        text=text,
+        chat_id=user_id
+    )
+    context.bot.send_invoice(
+        chat_id=user_id,
+        title='Оплата заказа из пиццерии',
+        description='You here',
+        payload='payment-for-pizza',
+        provider_token=context.bot_data['payment_token'],
+        currency='RUB',
+        need_name=True,
+        need_phone_number=True,
+        prices=[LabeledPrice('Заказ из пиццерии', cart_sum * 100)],
+    )
+    return HANDLE_USER_REPLY
+
+
+
+def handle_delivery(update, context):
+    query = update.callback_query.data
+    context.user_data['delivery_mode'] = query
+    delivery_price = context.user_data['delivery_price']
+    cart_sum = context.user_data['cart_sum']
+    order_price = delivery_price + cart_sum
+    bot = context.bot
+    user_id = update.effective_user.id
+    text = tw.dedent(
+        f'''
+        Вы выбрали доставку, теперь можете оплатить ваш заказ.
+        Сумма к оплате: ₽{order_price}
+        '''
+    )
+    bot.send_message(
+        text=text,
+        chat_id=user_id
+    )
+    context.bot.send_invoice(
+        chat_id=user_id,
+        title='Оплата заказа из пиццерии',
+        description='You here',
+        payload='payment-for-pizza',
+        provider_token=context.bot_data['payment_token'],
+        currency='RUB',
+        need_name=True,
+        need_phone_number=True,
+        prices=[LabeledPrice('Заказ из пиццерии', order_price * 100)],
+    )
+    return HANDLE_USER_REPLY
+
+
+def precheckout_callback(update, context):
+    query = update.pre_checkout_query
+    if query.invoice_payload != 'payment-for-pizza':
+        query.answer(ok=False, error_message="Something went wrong...")
+    else:
+        query.answer(ok=True)
+    return HANDLE_USER_REPLY
+
+
+def successful_payment_callback(update, context):
+    query = context.user_data['delivery_mode']
+    keyboard = [
+        [InlineKeyboardButton('Меню', callback_data='Меню')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if query == 'Доставка':
+        send_delivery_info_to_deliverer(context)
+        update.message.reply_text(
+            'Спасибо! Ваши данные переданы курьеру',
+            reply_markup=reply_markup
+        )
+    if query == 'Самовывоз':
+        send_info_for_pickup(update, context)
+    return HANDLE_MENU
 
 
 def cancel(update, context):
@@ -324,11 +418,13 @@ def main():
     tg_chat_id = env('TG_CHAT_ID')
     client_id = env('MOLTIN_CLIENT_ID')
     client_secret = env('MOLTIN_CLIENT_SECRET')
+    payment_token = env('PAYMENT_TOKEN')
     access_token = get_moltin_access_token_info(client_id, client_secret)
     updater = Updater(tg_token)
     bot = telegram.Bot(tg_token)
     logger.addHandler(TelegramLogsHandler(tg_chat_id, bot))
     dispatcher = updater.dispatcher
+    dispatcher.bot_data['payment_token'] = payment_token
     dispatcher.bot_data['access_token'] = access_token
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', handle_menu)],
@@ -355,21 +451,26 @@ def main():
                 MessageHandler(Filters.location, check_tg_location),
                 MessageHandler(Filters.text & ~Filters.command,
                                check_address_text),
-                CallbackQueryHandler(handle_waiting, pattern=r'Ввести снова'),
             ],
             HANDLE_DELIVERY: [
                 CallbackQueryHandler(cart_info, pattern='Корзина'),
                 CallbackQueryHandler(
-                    send_delivery_info_to_deliverer, pattern='Доставка'
+                    handle_delivery, pattern='Доставка'
                 ),
                 CallbackQueryHandler(
-                    send_info_for_pickup,
+                    handle_pickup,
                     pattern='Самовывоз'
                 ),
                 CallbackQueryHandler(handle_menu, pattern=r'Меню'),
+            ],
+            HANDLE_USER_REPLY: [
+                PreCheckoutQueryHandler(precheckout_callback),
+                MessageHandler(Filters.successful_payment,
+                               successful_payment_callback),
             ]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
+        per_chat=False,
         allow_reentry=True,
     )
     dispatcher.add_handler(conv_handler)

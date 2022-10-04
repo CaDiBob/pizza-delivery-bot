@@ -61,11 +61,12 @@ def get_min_distance(access_token, context):
     return min_order_distance
 
 
-def get_delivery_info(min_order_distance):
+def get_delivery_info(context, min_order_distance):
     order_distance = min_order_distance['distance']
     pizzeria_address = min_order_distance['address']
 
     if order_distance in range(0, 501):
+        context.user_data['delivery_price'] = 0
         return tw.dedent(f'''
         Может, зберете пиццу из нашей пиццерии неподалеку?
         она всего в {order_distance} метрах от вас!
@@ -73,17 +74,20 @@ def get_delivery_info(min_order_distance):
         А можем и беплатно доставить, нам не сложно.
         ''')
     elif order_distance in range(502, 5001):
+        context.user_data['delivery_price'] = 100
         return tw.dedent(f'''
         Похоже к вам придется ехать. Доставка будет стоить 100 рублей.
         Доставка или самовывоз?
         ''')
     elif order_distance in range(5002, 20001):
+        context.user_data['delivery_price'] = 300
         return tw.dedent(f'''
         Похоже к вам придется ехать. Доставка будет стоить 300 рублей.
         Доставка или самовывоз?
         ''')
     else:
         order_distance = order_distance / 1000
+        context.user_data['delivery_price'] = 0
         return tw.dedent(f'''
         Извините так далеко мы пиццу не доставим. Ближайщая пиццерия
         аж в {order_distance} километрах от вас
