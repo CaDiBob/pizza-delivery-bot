@@ -251,11 +251,13 @@ def send_delivery_info_to_deliverer(context):
     add_addressee(access_token, context)
     context.job_queue.run_once(
         send_notification_customer, 3600, context=user_id)
+    delivery_price = context.user_data['delivery_price']
     cart_sum = context.user_data['cart_sum']
     cart_info = context.user_data['cart_info']
+    order_price = delivery_price + cart_sum
     bot.send_message(
         text=tw.dedent(
-            f'Новая доставка: {cart_info}\n Сумма: ₽{cart_sum}'
+            f'Новая доставка: {cart_info}\n Сумма: ₽{order_price}'
         ),
         chat_id=deliverer_tg_id,
     )
