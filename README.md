@@ -27,6 +27,11 @@
 
 ### Как установить
 
+Клонировать репозиторий
+```bash
+git clone git@github.com:CaDiBob/lesson_6.git
+```
+
 Python3 должен быть установлен затем используйте `pip`
 
 ```bash
@@ -38,7 +43,23 @@ pip install -r requirements.txt
 ```bash
 python bot.py
 ```
+### Как запустить используя docker-compose
 
+Клонировать репозиторий
+```bash
+git clone git@github.com:CaDiBob/lesson_6.git
+```
+[Docker и Docker-compose](https://docs.docker.com/get-docker/) должены быть установлены.
+
+Затем нужно собрать контейнер командой:
+
+```bash
+sudo docker-compose build
+```
+И запустить его:
+```bash
+sudo docker-compose up -d
+```
 [Cсылка на бота Телеграм](https://t.me/CaD_pizza_shop_bot)
 
 ![](gif/pizza_bot.gif)
