@@ -12,7 +12,7 @@ from geocoder import (fetch_coordinates, get_delivery_info,
                       get_min_distance)
 from moltin import (add_addressee, connect_db, create_cart,
                     get_cart_info_products, get_cart_products, get_cart_sum,
-                    get_img, get_moltin_access_token_info, get_product_detail,
+                    get_img, get_moltin_access_token_info, get_order_info, get_product_detail,
                     get_product_info, get_products, put_product_to_cart,
                     remove_cart_item, update_access_token,)
 
@@ -114,8 +114,10 @@ def cart_info(update, context):
     cart_products = get_cart_products(access_token, cart_id)
     cart_info = get_cart_info_products(cart_products)
     cart_sum = get_cart_sum(access_token, cart_id)
+    order_info = get_order_info(cart_products)
     context.user_data['cart_sum'] = cart_sum
     context.user_data['cart_info'] = cart_info
+    context.user_data['order_info'] = order_info
     keyboard = list()
     for product in cart_products:
         title = product['name']
@@ -314,6 +316,7 @@ def handle_pickup(update, context):
     cart_sum = context.user_data['cart_sum']
     bot = context.bot
     user_id = update.effective_user.id
+    order_info = context.bot_data['order_info']
     text = tw.dedent(
         f'''
         Вы выбрали cамовывоз, теперь можете оплатить ваш заказ.
@@ -327,7 +330,7 @@ def handle_pickup(update, context):
     context.bot.send_invoice(
         chat_id=user_id,
         title='Оплата заказа из пиццерии',
-        description='You here',
+        description=order_info,
         payload='payment-for-pizza',
         provider_token=context.bot_data['payment_token'],
         currency='RUB',
@@ -346,6 +349,7 @@ def handle_delivery(update, context):
     order_price = delivery_price + cart_sum
     bot = context.bot
     user_id = update.effective_user.id
+    order_info = context.bot_data['order_info']
     text = tw.dedent(
         f'''
         Вы выбрали доставку, теперь можете оплатить ваш заказ.
@@ -359,7 +363,7 @@ def handle_delivery(update, context):
     context.bot.send_invoice(
         chat_id=user_id,
         title='Оплата заказа из пиццерии',
-        description='You here',
+        description=order_info,
         payload='payment-for-pizza',
         provider_token=context.bot_data['payment_token'],
         currency='RUB',

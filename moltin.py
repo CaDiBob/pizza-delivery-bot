@@ -46,6 +46,19 @@ def get_cart_products(access_token, cart_id):
     return answer
 
 
+def get_order_info(products):
+    order_info = str()
+    for product in products:
+        title = product['name']
+        price = product['meta']['display_price']['with_tax']['unit']['amount']
+        quantity = product['quantity']
+        products_info += tw.dedent(f'''
+        {title}: ₽{price}
+        Количество {quantity} шт.
+        ''')
+    return order_info
+
+
 def get_cart_info_products(products):
     products_info = str()
     for product in products:
