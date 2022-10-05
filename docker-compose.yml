@@ -1,0 +1,30 @@
+version: "3.7"
+services:
+  redis:
+    container_name: redis-bot
+    image: redis:5-alpine
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "16379:6379"
+    expose:
+      - ${REDIS_PORT}
+    volumes:
+      - /usr/src/app/data:/bitnami/redis/data
+    networks:
+      - redis-network
+  bot:
+    build: .
+    restart: always
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+    networks:
+      - redis-network
+volumes:
+  redis-data:
+networks:
+  redis-network:
+    driver: bridge
