@@ -345,7 +345,7 @@ def get_moltin_access_token_info(client_id, client_secret):
     }
     response = requests.post(url, data=data)
     response.raise_for_status()
-    answer = response.json() #['access_token']
+    answer = response.json()
     return answer
 
 
@@ -355,7 +355,7 @@ def update_access_token(access_token_info, client_id, client_secret):
     lifetime = access_token_info['expires_in']
     access_token = access_token_info['access_token']
     if curret_time > (birth_time + lifetime):
-        return get_moltin_access_token_info(client_id, client_secret)
+        return get_moltin_access_token_info(client_id, client_secret)['access_token']
     return access_token
 
 
