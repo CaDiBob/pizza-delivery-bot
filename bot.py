@@ -316,7 +316,7 @@ def handle_pickup(update, context):
     cart_sum = context.user_data['cart_sum']
     bot = context.bot
     user_id = update.effective_user.id
-    order_info = context.bot_data['order_info']
+    order_info = context.user_data['order_info']
     text = tw.dedent(
         f'''
         Вы выбрали cамовывоз, теперь можете оплатить ваш заказ.
@@ -349,7 +349,7 @@ def handle_delivery(update, context):
     order_price = delivery_price + cart_sum
     bot = context.bot
     user_id = update.effective_user.id
-    order_info = context.bot_data['order_info']
+    order_info = context.user_data['order_info']
     text = tw.dedent(
         f'''
         Вы выбрали доставку, теперь можете оплатить ваш заказ.

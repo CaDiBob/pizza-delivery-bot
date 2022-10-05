@@ -54,7 +54,7 @@ def get_order_info(products):
         quantity = product['quantity']
         order_info += tw.dedent(f'''
         {title}: ₽{price}
-        Количество {quantity} шт.
+        Количество {quantity} шт;
         ''')
     return order_info
 
