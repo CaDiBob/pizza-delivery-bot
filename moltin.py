@@ -1,15 +1,11 @@
 import os
-import redis
-import requests
-from environs import Env
 import textwrap as tw
 import time
+
+import requests
 from transliterate import translit
 
-from properties import (
-    flow_properties,
-    user_flow_properties,
-)
+from properties import flow_properties, user_flow_properties
 
 
 def add_deliverer_for_pizzeria(access_token, deliverer_tg_id):

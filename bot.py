@@ -204,7 +204,7 @@ def check_tg_location(update, context):
     coords = f'{current_position[0]},{current_position[1]}'
     addressee = fetch_coordinates(coords)
     context.user_data['addressee'] = addressee
-    min_distance_to_order = get_min_distance(access_token, context)
+    min_distance_to_order = get_min_distance(access_token, addressee)
     context.user_data['min_distance_to_order'] = min_distance_to_order
     keyboard = [
         [InlineKeyboardButton('Доставка', callback_data='Доставка')],
@@ -212,8 +212,10 @@ def check_tg_location(update, context):
         [InlineKeyboardButton('Корзина', callback_data='Корзина')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    delivery_info = get_delivery_info(context, min_distance_to_order)
-    update.message.reply_text(delivery_info, reply_markup=reply_markup)
+    delivery_info = get_delivery_info(min_distance_to_order)
+    context.user_data['delivery_info'] = delivery_info
+    text = delivery_info['text']
+    update.message.reply_text(text, reply_markup=reply_markup)
     return HANDLE_DELIVERY
 
 
@@ -226,7 +228,7 @@ def check_address_text(update, context):
     context.user_data['addressee'] = addressee
     if not addressee:
         update.message.reply_text('Введите корректный адрес')
-    min_distance_to_order = get_min_distance(access_token, context)
+    min_distance_to_order = get_min_distance(access_token, addressee)
     context.user_data['min_distance_to_order'] = min_distance_to_order
     keyboard = [
         [InlineKeyboardButton('Доставка', callback_data='Доставка')],
@@ -234,8 +236,10 @@ def check_address_text(update, context):
         [InlineKeyboardButton('Корзина', callback_data='Корзина')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    delivery_info = get_delivery_info(context, min_distance_to_order)
-    update.message.reply_text(delivery_info, reply_markup=reply_markup)
+    delivery_info = get_delivery_info(min_distance_to_order)
+    context.user_data['delivery_info'] = delivery_info
+    text = delivery_info['text']
+    update.message.reply_text(text, reply_markup=reply_markup)
     return HANDLE_DELIVERY
 
 
@@ -253,7 +257,8 @@ def send_delivery_info_to_deliverer(context):
     add_addressee(access_token, context)
     context.job_queue.run_once(
         send_notification_customer, 3600, context=user_id)
-    delivery_price = context.user_data['delivery_price']
+    delivery_info = context.user_data['delivery_info']
+    delivery_price = delivery_info['delivery_price']
     cart_sum = context.user_data['cart_sum']
     cart_info = context.user_data['cart_info']
     order_price = delivery_price + cart_sum
@@ -344,7 +349,8 @@ def handle_pickup(update, context):
 def handle_delivery(update, context):
     query = update.callback_query.data
     context.user_data['delivery_mode'] = query
-    delivery_price = context.user_data['delivery_price']
+    delivery_info = context.user_data['delivery_info']
+    delivery_price = delivery_info['delivery_price']
     cart_sum = context.user_data['cart_sum']
     order_price = delivery_price + cart_sum
     bot = context.bot

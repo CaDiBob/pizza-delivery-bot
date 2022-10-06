@@ -1,9 +1,11 @@
+import textwrap as tw
+
 import requests
 from environs import Env
 from geopy import distance
+
 from moltin import get_all_entries
 from properties import flow_properties
-import textwrap as tw
 
 
 def fetch_coordinates(address):
@@ -28,8 +30,7 @@ def fetch_coordinates(address):
     return float(lon), float(lat)
 
 
-def get_min_distance(access_token, context):
-    addressee = context.user_data['addressee']
+def get_min_distance(access_token, addressee):
     addressee_lon, addressee_lat = addressee
     flow_slug = flow_properties['slug']
     pizzerias_addresses = get_all_entries(access_token, flow_slug)['data']
@@ -61,34 +62,50 @@ def get_min_distance(access_token, context):
     return min_order_distance
 
 
-def get_delivery_info(context, min_order_distance):
+def get_delivery_info(min_order_distance):
     order_distance = min_order_distance['distance']
     pizzeria_address = min_order_distance['address']
 
     if order_distance in range(0, 501):
-        context.user_data['delivery_price'] = 0
-        return tw.dedent(f'''
+        delivery_price = 0
+        text = tw.dedent(f'''
         Может, зберете пиццу из нашей пиццерии неподалеку?
         она всего в {order_distance} метрах от вас!
         Вот её адрес: {pizzeria_address}
         А можем и беплатно доставить, нам не сложно.
         ''')
+        return {
+            'delivery_price': delivery_price,
+            'text': text,
+        }
     elif order_distance in range(502, 5001):
-        context.user_data['delivery_price'] = 100
-        return tw.dedent(f'''
+        delivery_price = 100
+        text = tw.dedent(f'''
         Похоже к вам придется ехать. Доставка будет стоить 100 рублей.
         Доставка или самовывоз?
         ''')
+        return {
+            'delivery_price': delivery_price,
+            'text': text,
+        }
     elif order_distance in range(5002, 20001):
-        context.user_data['delivery_price'] = 300
-        return tw.dedent(f'''
+        delivery_price = 300
+        text = tw.dedent(f'''
         Похоже к вам придется ехать. Доставка будет стоить 300 рублей.
         Доставка или самовывоз?
         ''')
+        return {
+            'delivery_price': delivery_price,
+            'text': text,
+        }
     else:
         order_distance = order_distance / 1000
-        context.user_data['delivery_price'] = 0
-        return tw.dedent(f'''
+        delivery_price = 0
+        text = tw.dedent(f'''
         Извините так далеко мы пиццу не доставим. Ближайщая пиццерия
         аж в {order_distance} километрах от вас
         ''')
+        return {
+            'delivery_price': delivery_price,
+            'text': text,
+        }
