@@ -531,15 +531,3 @@ def add_addresses(access_token):
         except requests.exceptions.HTTPError as err:
             print(err)
     return 'Upload complided'
-
-
-def connect_db():
-    env = Env()
-    env.read_env()
-    db = redis.Redis(
-        host=env('REDIS_HOST'),
-        password=env('REDIS_PASSWORD'),
-        port=env('REDIS_PORT'),
-        decode_responses=True,
-    )
-    return db

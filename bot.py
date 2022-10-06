@@ -1,6 +1,7 @@
 import logging
 import textwrap as tw
 
+import redis
 import telegram
 from environs import Env
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
@@ -8,13 +9,12 @@ from telegram.ext import (CallbackQueryHandler, CommandHandler,
                           ConversationHandler, Filters, MessageHandler,
                           PreCheckoutQueryHandler, Updater)
 
-from geocoder import (fetch_coordinates, get_delivery_info,
-                      get_min_distance)
-from moltin import (add_addressee, connect_db, create_cart,
-                    get_cart_info_products, get_cart_products, get_cart_sum,
-                    get_img, get_moltin_access_token_info, get_order_info, get_product_detail,
-                    get_product_info, get_products, put_product_to_cart,
-                    remove_cart_item, update_access_token,)
+from geocoder import fetch_coordinates, get_delivery_info, get_min_distance
+from moltin import (add_addressee, create_cart, get_cart_info_products,
+                    get_cart_products, get_cart_sum, get_img,
+                    get_moltin_access_token_info, get_order_info,
+                    get_product_detail, get_product_info, get_products,
+                    put_product_to_cart, remove_cart_item, update_access_token)
 
 (
     HANDLE_MENU,
@@ -43,7 +43,7 @@ class TelegramLogsHandler(logging.Handler):
 def handle_menu(update, context):
     user_id = update.effective_user.id
     context.user_data['user_id'] = user_id
-    db = connect_db()
+    db = context.bot_data['db']
     access_token = context.bot_data['access_token']
     products = get_products(access_token)
     context.user_data['products'] = products
@@ -247,7 +247,7 @@ def send_delivery_info_to_deliverer(context):
     addressee_lon, addressee_lat = addressee
     deliverer_tg_id = min_distance_to_order['deliverer_tg_id']
     user_id = context.user_data['user_id']
-    db = connect_db()
+    db = context.bot_data['db']
     devivery_cart_id = db.get(f'for_car_{user_id}')
     context.user_data['devivery_cart_id'] = devivery_cart_id
     add_addressee(access_token, context)
@@ -419,6 +419,13 @@ def main():
     client_id = env('MOLTIN_CLIENT_ID')
     client_secret = env('MOLTIN_CLIENT_SECRET')
     payment_token = env('PAYMENT_TOKEN')
+    db = redis.Redis(
+        host=env('REDIS_HOST'),
+        password=env('REDIS_PASSWORD'),
+        port=env('REDIS_PORT'),
+        decode_responses=True,
+    )
+
     access_token_info = get_moltin_access_token_info(client_id, client_secret)
     access_token = update_access_token(
         access_token_info, client_id, client_secret)
@@ -428,6 +435,7 @@ def main():
     dispatcher = updater.dispatcher
     dispatcher.bot_data['payment_token'] = payment_token
     dispatcher.bot_data['access_token'] = access_token
+    dispatcher.bot_data['db'] = db
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', handle_menu)],
         states={
